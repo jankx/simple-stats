@@ -1,0 +1,15 @@
+{
+    "name": "jankx/simple-stats",
+    "autoload": {
+        "psr-4": {
+            "Jankx\\SimpleStats\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Puleeno Nguyen",
+            "email": "puleeno@gmail.com"
+        }
+    ],
+    "require": {}
+}
