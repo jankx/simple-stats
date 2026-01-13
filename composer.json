@@ -3,7 +3,10 @@
     "autoload": {
         "psr-4": {
             "Jankx\\SimpleStats\\": "src/"
-        }
+        },
+        "files": [
+            "./bootstrap.php"
+        ]
     },
     "authors": [
         {
