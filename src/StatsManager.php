@@ -15,11 +15,54 @@ class StatsManager
 
     public function init()
     {
-        add_action('wp', [$this, 'trackPostView']);
+        add_action('wp_enqueue_scripts', [$this, 'enqueueTracker']);
+        add_action('wp_ajax_jankx_track_view', [$this, 'ajaxTrackView']);
+        add_action('wp_ajax_nopriv_jankx_track_view', [$this, 'ajaxTrackView']);
 
         if (is_admin()) {
             add_action('admin_init', [$this, 'checkDatabaseStatus']);
         }
+    }
+
+    public function enqueueTracker()
+    {
+        if (!is_singular()) {
+            return;
+        }
+
+        $post_id = get_the_ID();
+        if (get_post_status($post_id) !== 'publish') {
+            return;
+        }
+
+        $js_url = plugin_dir_url(__DIR__) . 'assets/js/stats.js';
+
+        // If this is running inside a theme or another plugin context, we might need a better way to resolve URL
+        // But assuming standard Composer usage, we'll try to guess relative to the current file structure or use a filter
+        $js_url = apply_filters('jankx_simple_stats_js_url', $js_url);
+
+        // Since this file is in src/, __DIR__ is .../src. 
+        // We want .../assets/js/stats.js
+        // plugin_dir_url might work if it's a main plugin file, but here it's a library.
+        // We need a robust way. For now let's construct relative to site_url if possible or rely on the filter.
+        // Actually, let's use a simpler approach: assume common structure.
+
+        // Fallback robust path calculation
+        if (defined('AKSELOS_CUSTOMIZER_URL')) {
+            // Specific for this project context
+            $js_url = AKSELOS_CUSTOMIZER_URL . 'vendor/jankx/simple-stats/assets/js/stats.js';
+        } else {
+            // Fallback for generic usage (might need adjustment)
+            $js_url = content_url() . '/plugins/akselos-customizer/vendor/jankx/simple-stats/assets/js/stats.js';
+        }
+
+        wp_enqueue_script('jankx-stats', $js_url, [], '1.0.0', true);
+
+        wp_localize_script('jankx-stats', 'jankx_stats_params', [
+            'ajax_url' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('jankx_track_view_nonce'),
+            'post_id' => $post_id
+        ]);
     }
 
     public function checkDatabaseStatus()
@@ -58,17 +101,19 @@ class StatsManager
         <?php
     }
 
-    public function trackPostView()
+    public function ajaxTrackView()
     {
-        if (!is_singular()) {
-            return;
-        }
+        check_ajax_referer('jankx_track_view_nonce');
 
-        $post_id = get_the_ID();
+        $post_id = isset($_POST['post_id']) ? intval($_POST['post_id']) : 0;
+
+        if (!$post_id) {
+            wp_send_json_error('Invalid Post ID');
+        }
 
         // Don't track if the post is not published
         if (get_post_status($post_id) !== 'publish') {
-            return;
+            wp_send_json_error('Post not published');
         }
 
         $user_id = get_current_user_id() ?: null;
@@ -76,6 +121,8 @@ class StatsManager
         $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
 
         $this->recordView($post_id, $user_id, $ip, $ua);
+
+        wp_send_json_success();
     }
 
     protected function getIpAddress()
